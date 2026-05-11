@@ -10,6 +10,7 @@ from room import (
     add_connection, remove_connection, get_connections,
     redis_client,
 )
+from timer import handle_timer_action, remove_timer, get_or_create_timer
 
 import json
 import secrets
@@ -100,20 +101,32 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
     })
 
     try:
-        # Keep the connection alive and relay messages.
         while True:
             data = await websocket.receive_json()
-            # For now, just broadcast whatever the client sends.
-            # Later we'll dispatch based on message type (timer, todo, etc).
-            await broadcast(code, {
-                **data,
-                "from": user_id,
-            }, exclude=websocket)
+            msg_type = data.get("type")
+
+            if msg_type == "timer_action":
+                # User controlling their own timer.
+                action = data.get("action")
+                timer_state = handle_timer_action(user_id, action)
+                # Broadcast updated timer state to everyone in the room.
+                await broadcast(code, {
+                    "type": "timer_update",
+                    "timer": timer_state,
+                })
+
+            else:
+                # Unknown message type: relay as-is for now.
+                await broadcast(code, {
+                    **data,
+                    "from": user_id,
+                }, exclude=websocket)
+
     except WebSocketDisconnect:
-        # Client disconnected (closed tab, lost network, etc).
         pass
     finally:
         remove_connection(code, websocket)
+        remove_timer(user_id)
         await redis_client.srem(f"room:{code}:users", user_id)
         await broadcast(code, {
             "type": "user_left",
