@@ -11,6 +11,7 @@ from room import (
     redis_client,
 )
 from timer import handle_timer_action, remove_timer, get_or_create_timer
+from todo import handle_todo_action, remove_todolist, get_or_create_todolist
 
 import json
 import secrets
@@ -100,6 +101,17 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
         "user_count": await get_user_count(code),
     })
 
+    # Send current room state to the new user (other users' timers and todos).
+    from timer import user_timers
+    from todo import user_todos
+
+    room_state = {
+        "type": "room_state",
+        "timers": [t.to_dict() for t in user_timers.values()],
+        "todos": [td.to_dict() for td in user_todos.values()],
+    }
+    await websocket.send_json(room_state)
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -114,6 +126,17 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
                     "type": "timer_update",
                     "timer": timer_state,
                 })
+            
+            elif msg_type == "todo_action":
+                # User modifying their own todo list.
+                action = data.get("action")
+                payload = data.get("payload", {})
+                todo_state = handle_todo_action(user_id, action, payload)
+                if todo_state:
+                    await broadcast(code, {
+                        "type": "todo_update",
+                        "todo": todo_state,
+                    })
 
             else:
                 # Unknown message type: relay as-is for now.
@@ -127,6 +150,7 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
     finally:
         remove_connection(code, websocket)
         remove_timer(user_id)
+        remove_todolist(user_id)
         await redis_client.srem(f"room:{code}:users", user_id)
         await broadcast(code, {
             "type": "user_left",
