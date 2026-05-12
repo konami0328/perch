@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perch — Room</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="room-body">
+
+  <!-- Top bar -->
+  <header class="room-header">
+    <span class="logo">🪶 Perch</span>
+    <div class="room-meta">
+      <span id="room-code" class="room-code" title="Click to copy" role="button">——————</span>
+      <span id="user-count" class="user-count">0/5</span>
+    </div>
+    <span id="conn-status" class="conn-status conn-connecting">connecting…</span>
+  </header>
+
+  <!-- Main layout: my panel on the left, others on the right -->
+  <main class="room-main">
+
+    <!-- My panel (self) -->
+    <section id="my-panel" class="user-panel my-panel" aria-label="Your workspace">
+
+      <div class="panel-header">
+        <span class="panel-label">you</span>
+      </div>
+
+      <!-- My timer -->
+      <div class="timer-block">
+        <div id="my-timer-display" class="timer-display">25:00</div>
+        <div id="my-timer-status" class="timer-status-label">idle</div>
+        <div class="timer-controls">
+          <button id="btn-start"  class="btn-timer btn-start">Start</button>
+          <button id="btn-pause"  class="btn-timer btn-pause" disabled>Pause</button>
+          <button id="btn-reset"  class="btn-timer btn-reset">Reset</button>
+          <button id="btn-break"  class="btn-timer btn-break">Break</button>
+        </div>
+      </div>
+
+      <!-- My todo list -->
+      <div class="todo-block">
+        <div class="todo-add-row">
+          <input
+            id="todo-input"
+            class="todo-input"
+            type="text"
+            placeholder="Add a task…"
+            maxlength="120"
+          />
+          <button id="btn-todo-add" class="btn-todo-add">＋</button>
+        </div>
+        <ul id="my-todo-list" class="todo-list" aria-label="Your tasks"></ul>
+      </div>
+
+    </section>
+
+    <!-- Other users' panels (dynamically added) -->
+    <div id="others-container" class="others-container">
+      <!-- .user-panel elements injected here by room.js -->
+    </div>
+
+  </main>
+
+</body>
+<script src="room.js"></script>
+</html>
