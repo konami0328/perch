@@ -1,10 +1,12 @@
 # Perch 🪶
 
-A lightweight co-study browser extension. No accounts, no cameras required, no social pressure — just a room code and a friend.
+A lightweight co-study web app. Instant rooms, ambient presence, no pressure.
 
 ## What is Perch?
 
-Perch lets you and up to 4 friends study or work together in a temporary shared room. Generate a 6-character code, share it, and you're in. The room expires after 10 minutes of inactivity. No sign-up, no history, no rankings.
+Perch lets you study alongside others in a temporary shared room — with people you know via invite code, or strangers via instant random matching. No scheduling, no leaderboards, no mandatory camera. Just show up and focus.
+
+Target users: Chinese-speaking students, freelancers, and remote workers.
 
 ## Features
 
@@ -16,18 +18,48 @@ Perch lets you and up to 4 friends study or work together in a temporary shared 
 - [x] Room state snapshot sent to late joiners (see existing timers and todos on entry)
 
 ### In Progress
-- [ ] Browser extension frontend (manifest, popup, room UI)
-- [ ] Optional camera with Q-style face overlay (MediaPipe + WebRTC)
+- [ ] Web app frontend (room entry, session UI, user auth)
+- [ ] User accounts (email + password, JWT)
+- [ ] Daily usage quota tracking (6 hrs / calendar day)
 
 ### Planned
-- [ ] Room code input and validation in the popup
-- [ ] Pomodoro timer UI with visible countdown
-- [ ] Todo list UI with real-time updates
-- [ ] Camera toggle (off by default, opt-in per user)
-- [ ] Face landmark detection with cartoon overlay via MediaPipe FaceMesh
-- [ ] WebRTC peer-to-peer video (mesh, up to 5 users)
-- [ ] Ambient scene backgrounds
-- [ ] Freemium model: free tier with basic features, paid tier for themes and history
+- [ ] Random matching with AI-companion fallback
+- [ ] Session configuration (20–90 min) and break-time prompt on session end
+- [ ] Per-session todo limit (max 3)
+- [ ] Optional camera: direct feed or SVG cartoon overlay (MediaPipe FaceMesh + WebRTC)
+- [ ] Freemium model: camera feature gated behind day / week / month subscription
+- [ ] Browser extension (Chrome / Edge) as secondary entry point
+- [ ] Deployment to Hong Kong VPS (SSL required for camera permissions)
+
+## How Rooms Work
+
+| Entry method | Description |
+|---|---|
+| Create | Get a 6-character invite code. Choose whether the room is open to random matching. |
+| Join by code | Enter a code to join a specific room. |
+| Random match | Drop into any open matchable room. Falls back to an AI-companion room if none available. |
+
+Rooms are never destroyed while a human user is present. TTL only ticks down after the last user leaves.
+
+## Session Rules
+
+- Duration: 20–90 minutes (user-specified)
+- Todo items: max 3 per session
+- On session end: choose a break (5–20 min), or be auto-removed after 60 seconds of no response
+- Daily cap: 6 hours of active session time per calendar day (all users)
+
+## Monetisation
+
+Camera is the only paid feature. All other functionality is free.
+
+| | Free | Paid |
+|---|---|---|
+| Rooms, timer, todos | ✓ | ✓ |
+| Random matching + AI companion | ✓ | ✓ |
+| Daily quota | 6 hrs | 6 hrs |
+| Camera (direct or cartoon overlay) | ✗ | ✓ |
+
+Paid plans: day pass, weekly, monthly.
 
 ## Tech Stack
 
@@ -35,28 +67,29 @@ Perch lets you and up to 4 friends study or work together in a temporary shared 
 |---|---|
 | Backend | Python, FastAPI, WebSocket |
 | Cache / State | Redis |
-| Frontend | JavaScript (Chrome Extension, Manifest V3) |
+| Frontend | JavaScript (Web app + Chrome Extension, Manifest V3) |
+| Auth | Email + password, JWT |
 | Camera | MediaPipe FaceMesh, WebRTC |
-| Deployment | TBD (single VPS, Redis instance) |
+| Deployment | Hong Kong VPS, SSL |
 
 ## Project Structure
 
 ```
 perch/
 ├── backend/
-│   ├── main.py        # FastAPI app, WebSocket endpoint, message dispatch
-│   ├── room.py        # Room code generation, Redis storage, connection registry
-│   ├── timer.py       # Per-user Pomodoro timer logic
-│   ├── todo.py        # Per-user todo list logic
+│   ├── main.py          # FastAPI app, WebSocket endpoint, message dispatch
+│   ├── room.py          # Room code generation, Redis storage, connection registry
+│   ├── timer.py         # Per-user Pomodoro timer logic
+│   ├── todo.py          # Per-user todo list logic
 │   └── requirements.txt
 │
+├── frontend/            # Web app (in progress)
+│
 ├── extension/
-│   ├── manifest.json  # Chrome Extension manifest (MV3)
-│   ├── popup.html     # Entry point: enter or create a room code
-│   ├── popup.js
-│   ├── room.html      # Main study room UI
-│   ├── room.js        # WebSocket client, timer and todo sync
-│   ├── camera.js      # MediaPipe face detection, WebRTC signaling
+│   ├── manifest.json    # Chrome Extension manifest (MV3)
+│   ├── popup.html/js    # Entry point
+│   ├── room.html/js     # Study room UI, WebSocket client
+│   ├── camera.js        # MediaPipe face detection, WebRTC signaling
 │   └── styles.css
 │
 └── README.md
@@ -65,7 +98,7 @@ perch/
 ## Running Locally
 
 ```bash
-# Start Redis
+# Start Redis (WSL2: required each session)
 sudo service redis-server start
 
 # Install dependencies
@@ -76,13 +109,9 @@ cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-The backend will be available at `http://localhost:8000`.  
-API docs at `http://localhost:8000/docs`.
+Backend: `http://localhost:8000`  
+API docs: `http://localhost:8000/docs`
 
 ## Privacy
 
-The extension frontend is open source. Camera video (when enabled) is transmitted peer-to-peer via WebRTC and never passes through the server. No user data is stored beyond the duration of a room session.
-
-## Status
-
-Early development. Walking skeleton complete. Frontend not yet started.
+Camera video (when enabled) is transmitted peer-to-peer via WebRTC and never passes through the server. No user data is retained after a session ends.
