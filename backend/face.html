@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Perch Face</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; color: #888; font-size: 12px; }
+    video  { display: none; }
+    canvas { border-radius: 8px; background: #222; }
+    #status { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" width="160" height="160"></canvas>
+  <div id="status">initializing…</div>
+
+  <!-- MediaPipe: loaded from CDN here (no extension CSP) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+    const video    = document.getElementById("video");
+    const canvas   = document.getElementById("canvas");
+    const ctx      = canvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+
+    // ── Who is allowed to receive our postMessages ──────────────────────────
+    // We only send to the parent frame (the extension's room.html).
+    // targetOrigin "*" is acceptable here because metrics contain no secrets.
+    const TARGET_ORIGIN = "*";
+
+    // ── Camera on/off controlled by parent via postMessage ──────────────────
+    let cameraRunning = false;
+    let faceMesh      = null;
+    let cameraUtil    = null;
+
+    window.addEventListener("message", (e) => {
+      if (e.data?.type === "perch_camera_start") startCamera();
+      if (e.data?.type === "perch_camera_stop")  stopCamera();
+    });
+
+    // Tell parent we are ready.
+    // Retry every 200ms until parent acknowledges with perch_ack —
+    // room.js may not be listening yet when the iframe first loads.
+    let readyInterval = setInterval(() => {
+      window.opener.postMessage({ type: "perch_face_ready" }, TARGET_ORIGIN);
+    }, 200);
+    window.addEventListener("message", (e) => {
+      if (e.data?.type === "perch_ack") clearInterval(readyInterval);
+    });
+
+    // ── FaceMesh setup ───────────────────────────────────────────────────────
+    async function startCamera() {
+      if (cameraRunning) return;
+      statusEl.textContent = "requesting camera…";
+
+      faceMesh = new FaceMesh({
+        locateFile: (f) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`,
+      });
+
+      faceMesh.setOptions({
+        maxNumFaces:            1,
+        refineLandmarks:        true,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence:  0.6,
+      });
+
+      faceMesh.onResults(onResults);
+
+      cameraUtil = new Camera(video, {
+        onFrame: async () => { await faceMesh.send({ image: video }); },
+        width: 320, height: 240,
+      });
+
+      try {
+        await cameraUtil.start();
+        cameraRunning = true;
+        statusEl.textContent = "tracking";
+        startRenderLoop();
+      } catch (err) {
+        statusEl.textContent = "camera error";
+        window.opener.postMessage({ type: "perch_camera_error", message: err.message }, TARGET_ORIGIN);
+      }
+    }
+
+    function stopCamera() {
+      if (cameraUtil) cameraUtil.stop();
+      cameraRunning = false;
+      statusEl.textContent = "camera off";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ── Landmark indices ─────────────────────────────────────────────────────
+    const LM = {
+      LEFT_EYE_TOP: 159, LEFT_EYE_BOTTOM: 145, LEFT_EYE_LEFT: 33,  LEFT_EYE_RIGHT: 133,
+      RIGHT_EYE_TOP: 386, RIGHT_EYE_BOTTOM: 374, RIGHT_EYE_LEFT: 362, RIGHT_EYE_RIGHT: 263,
+      MOUTH_TOP: 13, MOUTH_BOTTOM: 14, MOUTH_LEFT: 78, MOUTH_RIGHT: 308,
+      NOSE_TIP: 4, CHIN: 152, LEFT_TEMPLE: 234, RIGHT_TEMPLE: 454, FOREHEAD: 10,
+    };
+
+    function ear(lm, t, b, l, r) {
+      const v = Math.hypot(lm[t].x-lm[b].x, lm[t].y-lm[b].y);
+      const h = Math.hypot(lm[l].x-lm[r].x, lm[l].y-lm[r].y);
+      return h > 0 ? v / h : 1;
+    }
+    function mar(lm) {
+      const v = Math.hypot(lm[LM.MOUTH_TOP].x-lm[LM.MOUTH_BOTTOM].x, lm[LM.MOUTH_TOP].y-lm[LM.MOUTH_BOTTOM].y);
+      const h = Math.hypot(lm[LM.MOUTH_LEFT].x-lm[LM.MOUTH_RIGHT].x, lm[LM.MOUTH_LEFT].y-lm[LM.MOUTH_RIGHT].y);
+      return h > 0 ? v / h : 0;
+    }
+    function headPose(lm) {
+      const midX = (lm[LM.LEFT_TEMPLE].x + lm[LM.RIGHT_TEMPLE].x) / 2;
+      const tw   = Math.hypot(lm[LM.LEFT_TEMPLE].x-lm[LM.RIGHT_TEMPLE].x, lm[LM.LEFT_TEMPLE].y-lm[LM.RIGHT_TEMPLE].y);
+      const yaw  = ((lm[LM.NOSE_TIP].x - midX) / (tw / 2)) * 90;
+      const midY = (lm[LM.FOREHEAD].y + lm[LM.CHIN].y) / 2;
+      const fh   = Math.abs(lm[LM.CHIN].y - lm[LM.FOREHEAD].y);
+      const pitch = ((midY - lm[LM.NOSE_TIP].y) / (fh / 2)) * 60;
+      return { yaw, pitch };
+    }
+    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let lastMetrics = { yaw: 0, pitch: 0, eyeLeft: 1, eyeRight: 1, mouthOpen: 0, isSleeping: false };
+    let faceState   = "tracking";
+    let distractedTimer = null;
+    let awayTimer       = null;
+    let currentOpacity  = 1;
+    let targetOpacity   = 1;
+
+    const DISTRACTED_MS = 20000;
+    const AWAY_MS       = 10000;
+
+    function onResults(results) {
+      const lm = results.multiFaceLandmarks?.[0];
+      if (!lm) {
+        handleNoFace();
+        return;
+      }
+
+      clearTimeout(awayTimer); awayTimer = null;
+
+      const earL   = ear(lm, LM.LEFT_EYE_TOP,  LM.LEFT_EYE_BOTTOM,  LM.LEFT_EYE_LEFT,  LM.LEFT_EYE_RIGHT);
+      const earR   = ear(lm, LM.RIGHT_EYE_TOP, LM.RIGHT_EYE_BOTTOM, LM.RIGHT_EYE_LEFT, LM.RIGHT_EYE_RIGHT);
+      const mouthR = mar(lm);
+      const { yaw, pitch } = headPose(lm);
+      const absYaw = Math.abs(yaw);
+
+      if (absYaw > 70 || pitch < -25) {
+        targetOpacity = 0;
+        faceState = "lowhead";
+        scheduleDistracted();
+      } else {
+        clearDistracted();
+        faceState = "tracking";
+        targetOpacity = absYaw > 30 ? clamp01(1 - (absYaw - 30) / 40) : 1;
+      }
+
+      lastMetrics = {
+        yaw:       Math.round(yaw),
+        pitch:     Math.round(pitch),
+        eyeLeft:   +clamp01(earL  / 0.26).toFixed(2),
+        eyeRight:  +clamp01(earR  / 0.26).toFixed(2),
+        mouthOpen: +clamp01(mouthR / 0.35).toFixed(2),
+        isSleeping: faceState === "sleeping",
+      };
+
+      broadcastMetrics(lastMetrics);
+    }
+
+    function handleNoFace() {
+      if (faceState === "offframe" || faceState === "away") return;
+      faceState = "offframe";
+      targetOpacity = 0.2;
+      if (!awayTimer) {
+        awayTimer = setTimeout(() => { faceState = "away"; }, AWAY_MS);
+      }
+    }
+
+    function scheduleDistracted() {
+      if (distractedTimer) return;
+      distractedTimer = setTimeout(() => {
+        faceState = "sleeping";
+        lastMetrics.isSleeping = true;
+        broadcastMetrics(lastMetrics);
+      }, DISTRACTED_MS);
+    }
+
+    function clearDistracted() {
+      clearTimeout(distractedTimer); distractedTimer = null;
+      if (faceState === "sleeping") lastMetrics.isSleeping = false;
+    }
+
+    // ── Broadcast metrics to parent ──────────────────────────────────────────
+    let lastBroadcast = 0;
+    function broadcastMetrics(metrics) {
+      const now = Date.now();
+      if (now - lastBroadcast < 66) return;
+      lastBroadcast = now;
+      window.opener.postMessage({ type: "perch_face_metrics", metrics }, TARGET_ORIGIN);
+    }
+
+    // ── Render loop ──────────────────────────────────────────────────────────
+    function startRenderLoop() {
+      let last = 0;
+      function frame(ts) {
+        const dt = (ts - last) || 16; last = ts;
+        const step = dt / 400;
+        currentOpacity = currentOpacity < targetOpacity
+          ? Math.min(targetOpacity, currentOpacity + step)
+          : Math.max(targetOpacity, currentOpacity - step);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (currentOpacity > 0.01) drawFace(ctx, canvas.width, canvas.height, lastMetrics, currentOpacity);
+        if (faceState === "away") drawAway(ctx, canvas.width, canvas.height);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // ── Cartoon face drawing ─────────────────────────────────────────────────
+    function drawFace(ctx, w, h, m, opacity) {
+      const cx = w/2, cy = h/2, R = Math.min(w,h)*0.34;
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      const yr = (m.yaw * Math.PI) / 180;
+      ctx.translate(cx, cy);
+      ctx.transform(1, 0, Math.sin(yr)*0.3, 1, 0, 0);
+      ctx.translate(-cx, -cy);
+
+      // face
+      const g = ctx.createRadialGradient(cx, cy-R*0.1, R*0.2, cx, cy, R*1.05);
+      g.addColorStop(0, "#f5f0e8"); g.addColorStop(0.7, "#ede6d6"); g.addColorStop(1, "#d9cfc0");
+      ctx.beginPath(); ctx.ellipse(cx, cy, R*0.88, R, 0, 0, Math.PI*2);
+      ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = "#c4b89a"; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // blush
+      blush(ctx, cx-R*0.52, cy+R*0.08, R*0.18);
+      blush(ctx, cx+R*0.52, cy+R*0.08, R*0.18);
+
+      // eyes
+      const eyeY = cy-R*0.15, ex = R*0.32;
+      drawEye(ctx, cx-ex, eyeY, R*0.14, m.eyeLeft,  m.isSleeping);
+      drawEye(ctx, cx+ex, eyeY, R*0.14, m.eyeRight, m.isSleeping);
+
+      // brows
+      drawBrow(ctx, cx-ex, eyeY-R*0.22, R*0.16, m.isSleeping ? -1 : 0);
+      drawBrow(ctx, cx+ex, eyeY-R*0.22, R*0.16, m.isSleeping ? -1 : 0);
+
+      // nose
+      ctx.beginPath(); ctx.arc(cx, cy+R*0.06, R*0.035, 0, Math.PI*2);
+      ctx.fillStyle = "#c4a882"; ctx.fill();
+
+      // mouth
+      drawMouth(ctx, cx, cy+R*0.35, R, m.mouthOpen, m.isSleeping);
+
+      // zzz
+      if (m.isSleeping) drawZs(ctx, cx+R*0.6, cy-R*0.5, R);
+
+      ctx.restore();
+    }
+
+    function blush(ctx, x, y, r) {
+      const g = ctx.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,"rgba(220,150,130,0.35)"); g.addColorStop(1,"rgba(220,150,130,0)");
+      ctx.beginPath(); ctx.ellipse(x,y,r,r*0.6,0,0,Math.PI*2);
+      ctx.fillStyle=g; ctx.fill();
+    }
+
+    function drawEye(ctx, x, y, r, open, sleeping) {
+      if (sleeping) {
+        ctx.beginPath(); ctx.moveTo(x-r,y); ctx.quadraticCurveTo(x,y+r*0.4,x+r,y);
+        ctx.strokeStyle="#5a4a3a"; ctx.lineWidth=r*0.25; ctx.lineCap="round"; ctx.stroke(); return;
+      }
+      const h = r * open;
+      if (h < r*0.08) {
+        ctx.beginPath(); ctx.moveTo(x-r,y); ctx.lineTo(x+r,y);
+        ctx.strokeStyle="#5a4a3a"; ctx.lineWidth=r*0.2; ctx.lineCap="round"; ctx.stroke(); return;
+      }
+      ctx.beginPath(); ctx.ellipse(x,y,r,h,0,0,Math.PI*2);
+      ctx.fillStyle="#fff"; ctx.fill(); ctx.strokeStyle="#c4b89a"; ctx.lineWidth=0.8; ctx.stroke();
+      const ir = h*0.75;
+      const ig = ctx.createRadialGradient(x-ir*0.25,y-ir*0.25,ir*0.05,x,y,ir);
+      ig.addColorStop(0,"#6b8c74"); ig.addColorStop(1,"#3d5a47");
+      ctx.beginPath(); ctx.ellipse(x,y,ir*0.8,Math.min(ir,h*0.9),0,0,Math.PI*2);
+      ctx.fillStyle=ig; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x,y,ir*0.4,Math.min(ir*0.4,h*0.6),0,0,Math.PI*2);
+      ctx.fillStyle="#1a2a20"; ctx.fill();
+      ctx.beginPath(); ctx.arc(x-ir*0.28,y-ir*0.28,ir*0.18,0,Math.PI*2);
+      ctx.fillStyle="rgba(255,255,255,0.85)"; ctx.fill();
+    }
+
+    function drawBrow(ctx, x, y, w, droop) {
+      ctx.beginPath(); ctx.moveTo(x-w,y+droop*4);
+      ctx.quadraticCurveTo(x,y-w*0.25+droop*6,x+w,y+droop*4);
+      ctx.strokeStyle="#6b5a48"; ctx.lineWidth=w*0.22; ctx.lineCap="round"; ctx.stroke();
+    }
+
+    function drawMouth(ctx, cx, my, R, open, sleeping) {
+      if (sleeping) {
+        ctx.beginPath(); ctx.moveTo(cx-R*0.12,my); ctx.lineTo(cx+R*0.12,my);
+        ctx.strokeStyle="#8b7060"; ctx.lineWidth=2; ctx.lineCap="round"; ctx.stroke(); return;
+      }
+      const mw = R*0.28;
+      if (open < 0.1) {
+        ctx.beginPath(); ctx.moveTo(cx-mw,my-R*0.02);
+        ctx.quadraticCurveTo(cx,my+R*0.1,cx+mw,my-R*0.02);
+        ctx.strokeStyle="#8b7060"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.stroke();
+      } else {
+        const mh = R*0.08 + open*R*0.14;
+        ctx.beginPath(); ctx.ellipse(cx,my+mh*0.4,mw,mh,0,0,Math.PI*2);
+        ctx.fillStyle="#6b3a3a"; ctx.fill(); ctx.strokeStyle="#8b7060"; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath(); ctx.rect(cx-mw*0.5,my,mw,mh*0.35);
+        ctx.fillStyle="rgba(255,252,248,0.9)"; ctx.fill();
+      }
+    }
+
+    function drawAway(ctx, w, h) {
+      ctx.save(); ctx.globalAlpha=0.7;
+      ctx.fillStyle="rgba(245,242,235,0.85)";
+      ctx.beginPath(); ctx.roundRect(w/2-38,h/2-14,76,28,6); ctx.fill();
+      ctx.globalAlpha=1; ctx.fillStyle="#7a6e62";
+      ctx.font="12px Georgia,serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("暂离",w/2,h/2); ctx.restore();
+    }
+
+    function drawZs(ctx, x, y, R) {
+      const t = Date.now()/1000;
+      [R*0.1,R*0.14,R*0.18].forEach((sz,i)=>{
+        const off = ((t*0.5+i*0.33)%1);
+        const a   = off<0.7 ? off/0.7 : 1-(off-0.7)/0.3;
+        ctx.save(); ctx.globalAlpha*=a*0.85; ctx.fillStyle="#7a6e62";
+        ctx.font=`${sz}px Georgia,serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText("z", x+i*sz*0.8, y-off*R*0.5); ctx.restore();
+      });
+    }
+  </script>
+</body>
+</html>

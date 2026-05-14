@@ -15,20 +15,24 @@
       <span id="room-code" class="room-code" title="Click to copy" role="button">——————</span>
       <span id="user-count" class="user-count">0/5</span>
     </div>
+    <button id="btn-camera" class="btn-camera" title="Toggle camera">
+      <span class="camera-icon">◎</span>
+      <span class="camera-label">camera off</span>
+    </button>
     <span id="conn-status" class="conn-status conn-connecting">connecting…</span>
   </header>
 
-  <!-- Main layout: my panel on the left, others on the right -->
   <main class="room-main">
 
-    <!-- My panel (self) -->
     <section id="my-panel" class="user-panel my-panel" aria-label="Your workspace">
-
       <div class="panel-header">
         <span class="panel-label">you</span>
       </div>
 
-      <!-- My timer -->
+      <div id="my-face-container" class="face-container" hidden>
+        <canvas id="my-face-canvas" class="face-canvas" width="160" height="160"></canvas>
+      </div>
+
       <div class="timer-block">
         <div id="my-timer-display" class="timer-display">25:00</div>
         <div id="my-timer-status" class="timer-status-label">idle</div>
@@ -40,30 +44,18 @@
         </div>
       </div>
 
-      <!-- My todo list -->
       <div class="todo-block">
         <div class="todo-add-row">
-          <input
-            id="todo-input"
-            class="todo-input"
-            type="text"
-            placeholder="Add a task…"
-            maxlength="120"
-          />
+          <input id="todo-input" class="todo-input" type="text" placeholder="Add a task…" maxlength="120" />
           <button id="btn-todo-add" class="btn-todo-add">＋</button>
         </div>
         <ul id="my-todo-list" class="todo-list" aria-label="Your tasks"></ul>
       </div>
-
     </section>
 
-    <!-- Other users' panels (dynamically added) -->
-    <div id="others-container" class="others-container">
-      <!-- .user-panel elements injected here by room.js -->
-    </div>
-
+    <div id="others-container" class="others-container"></div>
   </main>
 
+  <script src="room.js"></script>
 </body>
-<script src="room.js"></script>
 </html>

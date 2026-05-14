@@ -2,7 +2,7 @@
 Perch backend entry point.
 FastAPI app with WebSocket support for real-time room sync.
 """
-
+from fastapi.responses import FileResponse
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from room import (
@@ -13,6 +13,7 @@ from room import (
 from timer import handle_timer_action, remove_timer, get_or_create_timer
 from todo import handle_todo_action, remove_todolist, get_or_create_todolist
 
+import os
 import json
 import secrets
 
@@ -40,6 +41,13 @@ async def root():
 async def health():
     """Used by monitoring tools to verify the service is alive."""
     return {"status": "healthy"}
+
+
+@app.get("/face")
+async def face_page():
+    """Serve the MediaPipe face detection page (runs in extension iframe)."""
+    face_html = os.path.join(os.path.dirname(__file__), "face.html")
+    return FileResponse(face_html, media_type="text/html")
 
 
 @app.post("/rooms")
@@ -138,6 +146,15 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
                         "todo": todo_state,
                     })
 
+            elif msg_type == "face_metrics":
+                # Relay face landmark metrics to other users in the room.
+                # metrics=None means the user turned their camera off.
+                await broadcast(code, {
+                    "type":    "face_metrics",
+                    "user_id": user_id,
+                    "metrics": data.get("metrics"),
+                }, exclude=websocket)
+            
             else:
                 # Unknown message type: relay as-is for now.
                 await broadcast(code, {
