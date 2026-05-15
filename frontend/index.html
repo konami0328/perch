@@ -1,0 +1,172 @@
+<!DOCTYPE html><html class="light" lang="zh-CN" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>PERCH | 栖木</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "linen": "#FCF9F3",
+                        "charcoal": "#2C332D",
+                        "stone": "#DCDAD4",
+                        "background": "#FCF9F3",
+                        "on-background": "#2C332D",
+                        "primary": "#2C332D",
+                        "outline": "#DCDAD4",
+                        "secondary": "#ad3313",
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0px",
+                    },
+                    "spacing": {
+                        "margin-page": "48px",
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Noto Serif SC"],
+                        "headline-xl": ["Noto Serif SC"],
+                        "body-md": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body { height: 100vh; width: 100vw; overflow: hidden; display: flex; flex-direction: column; background-color: #FCF9F3; color: #2C332D; }
+        .scaffold-line { background: #DCDAD4; position: absolute; pointer-events: none; }
+        .grayscale-hover { transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); filter: grayscale(1); }
+        .grayscale-hover:hover { transform: translate(10px, -10px) scale(1.05); filter: grayscale(0); }
+        .text-huge { font-size: clamp(80px, 11vw, 150px); line-height: 1.1; } /* 调整行高防止重叠 */
+        .vertical-text { writing-mode: vertical-rl; }
+    </style>
+</head>
+<body class="font-body-md selection:bg-charcoal selection:text-linen relative">
+<div class="scaffold-line w-[1px] h-full left-margin-page top-0 opacity-40"></div>
+<div class="scaffold-line w-[1px] h-3/4 left-[35%] top-0 opacity-20"></div>
+<div class="scaffold-line w-full h-[1px] left-0 top-24 opacity-30"></div>
+<div class="scaffold-line w-1/2 h-[1px] right-0 bottom-32 opacity-20"></div>
+
+<nav class="shrink-0 w-full z-50 flex justify-between items-center px-margin-page py-8 relative">
+<div class="flex items-baseline gap-4">
+<span class="font-headline-md text-2xl font-bold tracking-tight uppercase">PERCH</span>
+<span class="font-label-mono text-[12px] text-charcoal/60 uppercase">栖木</span>
+</div>
+<div class="flex items-center gap-10">
+<button class="font-label-mono text-[14px] uppercase text-charcoal/60 hover:text-charcoal transition-colors">使用说明</button>
+<div class="h-4 w-[1px] bg-outline"></div>
+<button class="font-label-mono text-[14px] uppercase text-charcoal/60 hover:text-charcoal transition-colors">登录</button>
+<button class="font-label-mono text-[14px] uppercase text-charcoal/60 hover:text-charcoal transition-colors">注册</button>
+</div>
+</nav>
+
+<main class="flex-grow flex min-h-0 relative">
+<section class="w-[35%] flex flex-col justify-center px-margin-page z-10">
+<div class="max-w-xs">
+<p class="font-label-mono text-[9px] text-secondary uppercase mb-6 tracking-[0.3em]">TODAY // 001</p>
+<h2 class="font-headline-lg text-4xl mb-4 leading-tight">现在，<br>想做点什么？</h2>
+<p class="font-body-md text-charcoal/60 mb-12 text-sm">写下三件事。一两件也行。</p>
+<div class="space-y-0 border-y border-outline/40 mb-12">
+<div class="flex items-center gap-6 py-6 border-b border-outline/20 last:border-b-0 group">
+<span class="font-label-mono text-charcoal/30 text-xs">01</span>
+<input class="w-full bg-transparent border-none p-0 focus:ring-0 text-lg placeholder:text-charcoal/10" placeholder="——" type="text">
+</div>
+<div class="flex items-center gap-6 py-6 border-b border-outline/20 last:border-b-0 group">
+<span class="font-label-mono text-charcoal/30 text-xs">02</span>
+<input class="w-full bg-transparent border-none p-0 focus:ring-0 text-lg placeholder:text-charcoal/10" placeholder="——" type="text">
+</div>
+<div class="flex items-center gap-6 py-6 border-b border-outline/20 last:border-b-0 group">
+<span class="font-label-mono text-charcoal/30 text-xs">03</span>
+<input class="w-full bg-transparent border-none p-0 focus:ring-0 text-lg placeholder:text-charcoal/10" placeholder="——" type="text">
+</div>
+</div>
+<div class="space-y-8">
+<div class="flex items-center gap-8">
+<button class="font-label-mono text-[14px] uppercase border-b border-charcoal pb-1 hover:text-secondary hover:border-secondary transition-all">立即匹配</button>
+<button class="font-label-mono text-[14px] uppercase text-charcoal/60 hover:text-charcoal transition-all">创建房间</button>
+</div>
+<div class="flex items-center gap-3">
+<span class="font-label-mono text-[14px] text-charcoal/40 uppercase">OR JOIN:</span>
+<input class="bg-transparent border-b border-outline/60 focus:border-charcoal focus:ring-0 px-0 py-1 font-label-mono text-xs w-28 placeholder:text-charcoal/20" maxlength="6" placeholder="输入房间号" type="text">
+</div>
+</div>
+</div>
+</section>
+
+<section class="w-[65%] relative flex items-center">
+<div class="absolute top-[18%] left-[-27%] w-[75%] z-0 pointer-events-auto">
+<img alt="Birds on a branch" class="w-full h-auto grayscale-hover" src="./birds2.png">
+</div>
+
+<div class="w-full flex flex-col items-end pr-[7vw] text-right z-10">
+<div class="relative">
+<h1 class="font-headline-xl text-huge font-bold text-charcoal tracking-tighter mb-12">
+    各自生长<br>
+    <span class="opacity-20 block mt-4">彼此在场</span>
+</h1>
+<div class="ml-auto mr-0 w-fit space-y-4">
+    <p class="font-label-mono text-[15px] text-charcoal/40 uppercase tracking-wider">
+        每位用户单次栖息至多专注 3 项待办 // 每日累计时长上限 6 小时
+    </p>
+    <p class="font-body-md text-charcoal/60 text-lg leading-relaxed whitespace-nowrap">
+        Perch 相信：效率不是时间的堆砌，而是心流的自然发生。
+    </p>
+</div>
+</div>
+</div>
+
+<div class="absolute top-8 right-8 z-30">
+<p class="font-label-mono uppercase tracking-[0.4em] vertical-text h-fit text-linen bg-secondary px-2 py-4 shadow-sm" style="font-size: 18px;">
+    无排名 · 零社交 · 不必表演努力
+</p>
+</div>
+</section>
+</main>
+
+<footer class="shrink-0 w-full px-margin-page py-8 flex justify-end items-end relative z-50">
+<div class="text-right">
+<p class="font-label-mono text-[9px] text-charcoal/40 uppercase tracking-widest mb-1">EST. 2026</p>
+<p class="font-label-mono text-[10px] text-charcoal/60 uppercase">© PERCH. ALL RIGHTS RESERVED.</p>
+</div>
+</footer>
+
+<div class="absolute top-24 left-margin-page w-2 h-2 rounded-full border border-charcoal/20 -translate-x-1/2 -translate-y-1/2"></div>
+<div class="absolute bottom-32 right-1/2 w-1 h-8 bg-charcoal/10"></div>
+
+<script>
+  const btnMatch  = document.querySelector('button.font-label-mono:has(+ button)');
+
+  // 更稳妥的方式：用文本内容找按钮
+  const allBtns = [...document.querySelectorAll('button.font-label-mono')];
+  const btnMatchNow  = allBtns.find(b => b.textContent.trim() === '立即匹配');
+  const btnCreate    = allBtns.find(b => b.textContent.trim() === '创建房间');
+  const joinInput    = document.querySelector('input[maxlength="6"]');
+
+  async function createAndJoin() {
+    try {
+      const res  = await fetch('/rooms', { method: 'POST' });
+      const data = await res.json();
+      location.href = `/room?code=${data.code}`;
+    } catch (e) {
+      alert('创建房间失败，请检查服务是否启动。');
+    }
+  }
+
+  btnMatchNow?.addEventListener('click', createAndJoin);
+  btnCreate?.addEventListener('click', createAndJoin);
+
+  joinInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const code = joinInput.value.trim().toUpperCase();
+      if (code.length === 6) location.href = `/room?code=${code}`;
+    }
+  });
+
+  // 也支持在输入框旁边加一个跳转（目前 HTML 里没有专门的加入按钮，回车够用）
+</script>
+
+</body></html>

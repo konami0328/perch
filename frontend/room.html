@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html class="light" lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PERCH | 栖木</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "linen":      "#FCF9F3",
+            "charcoal":   "#2C332D",
+            "stone":      "#DCDAD4",
+            "background": "#FCF9F3",
+            "primary":    "#2C332D",
+            "outline":    "#DCDAD4",
+            "secondary":  "#ad3313",
+          },
+          borderRadius: { DEFAULT: "0px" },
+          spacing: { "margin-page": "48px" },
+          fontFamily: {
+            "headline-lg": ["Noto Serif SC"],
+            "body-md":     ["Inter"],
+            "label-mono":  ["JetBrains Mono"],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    /* CSS custom property for animatable HSL border on remote panels */
+    @property --face-hue {
+      syntax: '<number>';
+      inherits: false;
+      initial-value: 140;
+    }
+
+    body {
+      background-color: #FCF9F3;
+      color: #2C332D;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .scaffold-line {
+      background: #DCDAD4;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    /* ── Face SVG ── */
+    .face-svg {
+      display: block;
+      color: #2C332D;  /* SVG strokes inherit currentColor */
+    }
+
+    /* Remote panels: border colour driven by face state */
+    .other-panel .face-svg {
+      outline: 2px solid hsl(var(--face-hue) 40% 50%);
+      outline-offset: 2px;
+      transition: --face-hue 1.2s ease, filter 1.2s ease;
+      --face-hue: 140;
+    }
+    .other-panel.face-state--focused    .face-svg { --face-hue: 140; filter: none; transition: --face-hue 0.4s ease, filter 0.4s ease; }
+    .other-panel.face-state--distracted .face-svg { --face-hue: 50;  filter: none; }
+    .other-panel.face-state--severe     .face-svg { --face-hue: 10;  filter: none; }
+    .other-panel.face-state--away       .face-svg { filter: saturate(0) brightness(0.85); }
+
+    /* ── Timer display ── */
+    .timer-digits {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    /* ── Todo items ── */
+    .todo-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #DCDAD4; }
+    .todo-item:last-child { border-bottom: none; }
+    .todo-item.done .todo-text { text-decoration: line-through; opacity: 0.4; }
+
+    /* ── Connection status dot ── */
+    .conn-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 9999px;
+      background: #DCDAD4;
+    }
+    .conn-dot.connected    { background: #65a96e; }
+    .conn-dot.connecting   { background: #c4a030; }
+    .conn-dot.disconnected { background: #ad3313; }
+  </style>
+</head>
+
+<body class="font-body-md selection:bg-charcoal selection:text-linen relative">
+
+  <!-- Scaffold lines (match index.html aesthetic) -->
+  <div class="scaffold-line w-[1px] h-full left-[48px] top-0 opacity-30"></div>
+  <div class="scaffold-line w-full h-[1px] left-0 top-20 opacity-20"></div>
+
+  <!-- Hidden video: getUserMedia sink, never shown -->
+  <video id="camera-video" autoplay playsinline muted style="display:none"></video>
+
+  <!-- ── Nav ── -->
+  <nav class="shrink-0 w-full flex justify-between items-center px-[48px] py-6 relative z-50 border-b border-outline/30">
+    <div class="flex items-baseline gap-4">
+      <a href="/" class="font-headline-lg text-xl font-bold tracking-tight uppercase hover:text-secondary transition-colors">PERCH</a>
+      <span class="font-label-mono text-[10px] text-charcoal/50 uppercase">栖木</span>
+    </div>
+    <div class="flex items-center gap-6">
+      <!-- Room code: click to copy -->
+      <button id="room-code-btn" class="font-label-mono text-[13px] uppercase tracking-widest text-charcoal/50 hover:text-charcoal transition-colors cursor-pointer" title="点击复制房间号">
+        ——————
+      </button>
+      <div class="h-3 w-[1px] bg-outline"></div>
+      <!-- Connection status -->
+      <div class="flex items-center gap-2">
+        <span id="conn-dot" class="conn-dot connecting"></span>
+        <span id="conn-label" class="font-label-mono text-[10px] text-charcoal/40 uppercase">connecting</span>
+      </div>
+      <div class="h-3 w-[1px] bg-outline"></div>
+      <!-- User count -->
+      <span id="user-count" class="font-label-mono text-[10px] text-charcoal/40 uppercase">0/5</span>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main class="flex-grow flex min-h-0 overflow-hidden">
+
+    <!-- ── My panel (left, fixed width) ── -->
+    <aside class="w-72 shrink-0 flex flex-col border-r border-outline/30 overflow-y-auto">
+
+      <!-- Face area -->
+      <div id="my-face-container" class="border-b border-outline/20 p-6 flex flex-col items-center gap-4" style="display:none!important">
+        <svg id="my-face-svg" class="face-svg w-36 h-36" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+        <!-- Camera toggle -->
+        <button id="btn-camera" class="font-label-mono text-[10px] uppercase text-charcoal/40 hover:text-charcoal transition-colors tracking-widest flex items-center gap-2">
+          <span id="camera-icon">◎</span>
+          <span id="camera-label">camera off</span>
+        </button>
+      </div>
+
+      <!-- Camera toggle (shown when face container hidden) -->
+      <div id="camera-toggle-row" class="px-6 py-4 border-b border-outline/20">
+        <button id="btn-camera-2" class="font-label-mono text-[10px] uppercase text-charcoal/40 hover:text-charcoal transition-colors tracking-widest flex items-center gap-2">
+          <span id="camera-icon-2">◎</span>
+          <span id="camera-label-2">camera off</span>
+        </button>
+      </div>
+
+      <!-- Timer -->
+      <div class="px-6 py-6 border-b border-outline/30">
+        <p class="font-label-mono text-[9px] text-secondary uppercase tracking-[0.3em] mb-4">今日专注</p>
+        <div id="my-timer-display" class="timer-digits font-headline-lg text-5xl mb-1">25:00</div>
+        <div id="my-timer-status" class="font-label-mono text-[10px] text-charcoal/40 uppercase mb-6">idle</div>
+        <div class="flex gap-3 flex-wrap">
+          <button id="btn-start" class="font-label-mono text-[11px] uppercase border-b border-charcoal pb-0.5 hover:text-secondary hover:border-secondary transition-all">开始</button>
+          <button id="btn-pause" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all" disabled>暂停</button>
+          <button id="btn-reset" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all" disabled>重置</button>
+          <button id="btn-break" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all">休息</button>
+        </div>
+      </div>
+
+      <!-- Todos -->
+      <div class="px-6 py-6 flex-grow">
+        <p class="font-label-mono text-[9px] text-secondary uppercase tracking-[0.3em] mb-4">今日三件事</p>
+        <ul id="my-todo-list" class="mb-4"></ul>
+        <div class="flex items-center gap-3 border-b border-outline/40 pb-2">
+          <input id="todo-input"
+            class="flex-grow bg-transparent border-none p-0 focus:ring-0 font-body-md text-sm placeholder:text-charcoal/20"
+            placeholder="添加一件事…" maxlength="120" type="text">
+          <button id="btn-todo-add" class="font-label-mono text-charcoal/40 hover:text-charcoal transition-colors text-base">＋</button>
+        </div>
+      </div>
+
+      <!-- Footer label -->
+      <div class="px-6 py-4 border-t border-outline/20">
+        <p class="font-label-mono text-[9px] text-charcoal/20 uppercase tracking-widest">YOU</p>
+      </div>
+
+    </aside>
+
+    <!-- ── Others area ── -->
+    <div id="others-container" class="flex-grow overflow-x-auto flex gap-0">
+      <!-- Other user panels are injected here by room.js -->
+      <!-- Empty state -->
+      <div id="empty-state" class="flex-grow flex flex-col items-center justify-center text-center px-16">
+        <p class="font-headline-lg text-3xl text-charcoal/10 mb-4">等待他人加入</p>
+        <p class="font-label-mono text-[10px] text-charcoal/20 uppercase tracking-widest">分享房间号邀请好友</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Banner (injected on error) ── -->
+  <div id="banner-container"></div>
+
+  <script type="module" src="room.js"></script>
+</body>
+</html>

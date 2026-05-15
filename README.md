@@ -48,19 +48,6 @@ Rooms are never destroyed while a human user is present. TTL only ticks down aft
 - On session end: choose a break (5–20 min), or be auto-removed after 60 seconds of no response
 - Daily cap: 6 hours of active session time per calendar day (all users)
 
-## Monetisation
-
-Camera is the only paid feature. All other functionality is free.
-
-| | Free | Paid |
-|---|---|---|
-| Rooms, timer, todos | ✓ | ✓ |
-| Random matching + AI companion | ✓ | ✓ |
-| Daily quota | 6 hrs | 6 hrs |
-| Camera (direct or cartoon overlay) | ✗ | ✓ |
-
-Paid plans: day pass, weekly, monthly.
-
 ## Tech Stack
 
 | Layer | Technology |

@@ -3,6 +3,7 @@ Perch backend entry point.
 FastAPI app with WebSocket support for real-time room sync.
 """
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from room import (
@@ -33,8 +34,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "perch"}
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 @app.get("/health")
@@ -48,6 +48,12 @@ async def face_page():
     """Serve the MediaPipe face detection page (runs in extension iframe)."""
     face_html = os.path.join(os.path.dirname(__file__), "face.html")
     return FileResponse(face_html, media_type="text/html")
+
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+@app.get("/room")
+async def room_page():
+    return FileResponse(os.path.join(FRONTEND_DIR, "room.html"))
 
 
 @app.post("/rooms")
@@ -153,6 +159,7 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
                     "type":    "face_metrics",
                     "user_id": user_id,
                     "metrics": data.get("metrics"),
+                    "state":   data.get("state"),   # focused/distracted/severe/away
                 }, exclude=websocket)
             
             else:
@@ -174,6 +181,9 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
             "user_id": user_id,
             "user_count": await get_user_count(code),
         })
+
+
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 async def broadcast(code: str, message: dict, exclude=None) -> None:
