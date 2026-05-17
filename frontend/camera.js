@@ -29,10 +29,10 @@ const REF_CHEEK_SPAN       = 0.38;
 
 // Spring smoothing factor (0 = no smoothing, 1 = instant). Lower = more inertia.
 const EASE_HEAD   = 0.18;
-const EASE_EYE    = 0.35;
+const EASE_EYE    = 0.10;   // reduced — was 0.35, high value leaked landmark noise
 const EASE_PUPIL  = 0.25;
-const EASE_MOUTH  = 0.30;
-const EASE_BLUSH  = 0.10;
+const EASE_MOUTH  = 0.10;
+const EASE_BLUSH  = 0.25;
 
 // Default avatar color (can be overridden via window.PERCH_AVATAR_COLOR)
 const DEFAULT_BG = "#F28C8C";
@@ -52,8 +52,8 @@ let severeTimer = null, awayTimer = null, recoveryTimer = null, lastEmitTime = 0
 let lastMetrics = {
   head:  { x: 0, y: 0, z: 0, degrees: { x: 0, y: 0, z: 0 } },
   eye:   { l: 1, r: 1 },
-  pupil: { x: 0, y: 0 },             // gaze direction, -1..1
-  mouth: { y: 0, cornerL: 0, cornerR: 0, pout: 0 }, // 增强：加入嘟嘴数据
+  pupil: { x: 0, y: 0 },
+  mouth: { y: 0, cornerL: 0, cornerR: 0, pout: 0 },
   scale: 1,
 };
 
@@ -62,7 +62,7 @@ let eased = {
   yawDeg: 0, pitchDeg: 0, rollDeg: 0, faceScale: 1,
   eyeL: 1, eyeR: 1,
   pupilX: 0, pupilY: 0,
-  mouthY: 0, cornerL: 0, cornerR: 0, pout: 0,      // 增强：加入嘟嘴平滑缓冲
+  mouthY: 0, cornerL: 0, cornerR: 0, pout: 0,
   blush: 0.3,
 };
 
@@ -87,7 +87,6 @@ export async function initCamera(video, svg, { onMetrics, onStateChange } = {}) 
 
 export function renderRemoteFace(svg, metrics, state) {
   if (!svg.dataset.skeletonBuilt) buildSvgSkeleton(svg);
-  // Remote faces: render directly without easing (smoothing should be on sender side)
   drawFace(svg, metrics, state, /* useEased */ false);
 }
 
@@ -147,14 +146,11 @@ function computeMouthCorners(lm) {
   const mouthMidY = (lm[13].y + lm[14].y) / 2;
   const cornerR   = clamp((mouthMidY - lm[61].y)  * 30, -1, 1);
   const cornerL   = clamp((mouthMidY - lm[291].y) * 30, -1, 1);
-  
-  // 核心改动：利用嘴唇绝对宽度与脸部宽度的比例，检测是否向内聚拢（嘟嘴）
-  const faceWidth = Math.hypot(lm[234].x - lm[454].x, lm[234].y - lm[454].y);
-  const mouthWidth = Math.hypot(lm[78].x - lm[308].x, lm[78].y - lm[308].y);
-  const normWidth = faceWidth > 0 ? mouthWidth / faceWidth : 0.35;
-  
-  // 基准值通常在 0.33~0.38。低于 0.32 时代表嘴唇缩紧，触发嘟嘴权重计算
-  const pout = clamp01((0.32 - normWidth) * 12);
+
+  const faceWidth  = Math.hypot(lm[234].x - lm[454].x, lm[234].y - lm[454].y);
+  const mouthWidth = Math.hypot(lm[78].x  - lm[308].x, lm[78].y  - lm[308].y);
+  const normWidth  = faceWidth > 0 ? mouthWidth / faceWidth : 0.35;
+  const pout       = clamp01((0.32 - normWidth) * 12);
 
   return { cornerL, cornerR, pout };
 }
@@ -203,12 +199,34 @@ function onFaceResults(results) {
 
   const { cornerL, cornerR, pout } = computeMouthCorners(landmarks);
 
+  // Raw eye openness from Kalidokit. Note: Kalidokit swaps l/r vs MediaPipe convention.
+  let rawEyeL = rig.eye?.r ?? 1;
+  let rawEyeR = rig.eye?.l ?? 1;
+
+  // Pitch-aware symmetry correction:
+  // When looking down, FaceMesh landmark accuracy degrades asymmetrically — one eye's
+  // lid points occlude before the other, causing one eye to appear more closed.
+  // Fix: blend each eye toward their average proportionally to how much we're pitched down.
+  const pitchDeg  = rig.head?.degrees?.x ?? (rig.head?.x ?? 0) * 57.3;
+  const pitchDown = clamp01(-pitchDeg / 30);           // 0 at neutral, 1 at 30° down
+  const eyeAvg    = (rawEyeL + rawEyeR) / 2;
+  rawEyeL = lerp(rawEyeL, eyeAvg, pitchDown * 0.7);   // pull toward average when pitched
+  rawEyeR = lerp(rawEyeR, eyeAvg, pitchDown * 0.7);
+
+  // Symmetry clamp: if the two eyes differ by more than 0.25, pull the outlier inward.
+  // This catches one-eye-open frames without flattening natural winks.
+  const eyeDiff = Math.abs(rawEyeL - rawEyeR);
+  if (eyeDiff > 0.25) {
+    const pull = (eyeDiff - 0.25) * 0.6;
+    if (rawEyeL > rawEyeR) rawEyeL -= pull; else rawEyeR -= pull;
+  }
+
   lastMetrics = {
     head: {
       x: rig.head?.x ?? 0, y: rig.head?.y ?? 0, z: rig.head?.z ?? 0,
       degrees: rig.head?.degrees ?? { x: 0, y: 0, z: 0 },
     },
-    eye:   { l: rig.eye?.r ?? 1, r: rig.eye?.l ?? 1 },
+    eye:   { l: clamp01(rawEyeL), r: clamp01(rawEyeR) },
     pupil: computePupilGaze(landmarks),
     mouth: { y: computeMAR(landmarks), cornerL, cornerR, pout },
     scale: computeFaceScale(landmarks),
@@ -270,7 +288,32 @@ function clearAwayTimer()     { if (awayTimer)     { clearTimeout(awayTimer);   
 function clearRecoveryTimer() { if (recoveryTimer) { clearTimeout(recoveryTimer); recoveryTimer = null; } }
 function clearAllTimers()     { clearSevereTimer(); clearAwayTimer(); clearRecoveryTimer(); }
 
+// ── Anti-flicker helpers ──────────────────────────────────────────────────────
+
+// Only write to the DOM when the string value actually changes.
+// Keyed per element+attribute via WeakMap to avoid string allocation overhead.
+const _attrCache = new WeakMap();
+function setAttr(el, name, val) {
+  if (!el) return;
+  let m = _attrCache.get(el);
+  if (!m) { m = Object.create(null); _attrCache.set(el, m); }
+  if (m[name] === val) return;
+  m[name] = val;
+  el.setAttribute(name, val);
+}
+
+// Cache avatar color so we don't re-read window every frame.
+let _cachedAvatarColor = null;
+function getAvatarColor() {
+  const c = window.PERCH_AVATAR_COLOR || DEFAULT_BG;
+  if (c !== _cachedAvatarColor) _cachedAvatarColor = c;
+  return _cachedAvatarColor;
+}
+
 // ── Animation loop ────────────────────────────────────────────────────────────
+
+// How close eased values must be to their targets before we stop drawing.
+const SETTLE_EPS = 0.002;
 
 function startAnimationLoop(svg) {
   function tick() {
@@ -279,27 +322,56 @@ function startAnimationLoop(svg) {
     const targetYaw   = lastMetrics.head.degrees?.y ?? lastMetrics.head.y * 57.3;
     const targetPitch = lastMetrics.head.degrees?.x ?? lastMetrics.head.x * 57.3;
     const targetRoll  = (lastMetrics.head.z * 180) / Math.PI;
+    const targetScale = lastMetrics.scale ?? 1;
+    const targetEyeL  = isAway ? 0 : lastMetrics.eye.l;
+    const targetEyeR  = isAway ? 0 : lastMetrics.eye.r;
+    const targetPupilX = isAway ? 0 : lastMetrics.pupil.x;
+    const targetPupilY = isAway ? 0 : lastMetrics.pupil.y;
+    const targetMouthY  = isAway ? 0 : lastMetrics.mouth.y;
+    const targetCornerL = isAway ? 0 : lastMetrics.mouth.cornerL;
+    const targetCornerR = isAway ? 0 : lastMetrics.mouth.cornerR;
+    const targetPout    = isAway ? 0 : lastMetrics.mouth.pout;
+    const smileTarget   = clamp01((targetCornerL + targetCornerR) / 2);
+    const targetBlush   = isAway ? 0 : 0.25 + smileTarget * 0.55;
 
     eased.yawDeg    = lerp(eased.yawDeg,    targetYaw,    EASE_HEAD);
     eased.pitchDeg  = lerp(eased.pitchDeg,  targetPitch,  EASE_HEAD);
     eased.rollDeg   = lerp(eased.rollDeg,   targetRoll,   EASE_HEAD);
-    eased.faceScale = lerp(eased.faceScale, lastMetrics.scale ?? 1, EASE_HEAD);
+    eased.faceScale = lerp(eased.faceScale, targetScale,  EASE_HEAD);
 
-    eased.eyeL = lerp(eased.eyeL, isAway ? 0 : lastMetrics.eye.l, EASE_EYE);
-    eased.eyeR = lerp(eased.eyeR, isAway ? 0 : lastMetrics.eye.r, EASE_EYE);
+    // How much we're looking down (0 = neutral/up, 1 = 30°+ down).
+    // Used to increase smoothing where FaceMesh is least accurate.
+    const pitchDownFactor = clamp01(-targetPitch / 30);
 
-    eased.pupilX = lerp(eased.pupilX, isAway ? 0 : lastMetrics.pupil.x, EASE_PUPIL);
-    eased.pupilY = lerp(eased.pupilY, isAway ? 0 : lastMetrics.pupil.y, EASE_PUPIL);
+    // Dynamic eye easing: slow down more when pitched down, where landmark noise is worst.
+    const dynEaseEye = lerp(EASE_EYE, EASE_EYE * 0.4, pitchDownFactor);
 
-    eased.mouthY  = lerp(eased.mouthY,  isAway ? 0 : lastMetrics.mouth.y,       EASE_MOUTH);
-    eased.cornerL = lerp(eased.cornerL, isAway ? 0 : lastMetrics.mouth.cornerL, EASE_MOUTH);
-    eased.cornerR = lerp(eased.cornerR, isAway ? 0 : lastMetrics.mouth.cornerR, EASE_MOUTH);
-    eased.pout    = lerp(eased.pout,    isAway ? 0 : lastMetrics.mouth.pout,    EASE_MOUTH); // 增加平滑滤波
+    eased.eyeL = lerp(eased.eyeL, targetEyeL, dynEaseEye);
+    eased.eyeR = lerp(eased.eyeR, targetEyeR, dynEaseEye);
 
-    const smileAvg = clamp01((eased.cornerL + eased.cornerR) / 2);
-    eased.blush    = lerp(eased.blush, isAway ? 0 : 0.25 + smileAvg * 0.55, EASE_BLUSH);
+    eased.pupilX = lerp(eased.pupilX, targetPupilX, EASE_PUPIL);
+    eased.pupilY = lerp(eased.pupilY, targetPupilY, EASE_PUPIL);
 
-    drawFaceFromEased(svg, isAway);
+    // Dynamic mouth easing: also dampen when pitched — MAR is perspective-distorted.
+    const dynEaseMouth = lerp(EASE_MOUTH, EASE_MOUTH * 0.35, pitchDownFactor);
+
+    eased.mouthY  = lerp(eased.mouthY,  targetMouthY,  dynEaseMouth);
+    eased.cornerL = lerp(eased.cornerL, targetCornerL, dynEaseMouth);
+    eased.cornerR = lerp(eased.cornerR, targetCornerR, dynEaseMouth);
+    eased.pout    = lerp(eased.pout,    targetPout,    dynEaseMouth);
+    eased.blush   = lerp(eased.blush,   targetBlush,   EASE_BLUSH);
+
+    // Skip DOM writes once all values have converged — eliminates resting flicker.
+    const settled =
+      Math.abs(eased.yawDeg   - targetYaw)    < SETTLE_EPS &&
+      Math.abs(eased.pitchDeg - targetPitch)  < SETTLE_EPS &&
+      Math.abs(eased.eyeL     - targetEyeL)   < SETTLE_EPS &&
+      Math.abs(eased.eyeR     - targetEyeR)   < SETTLE_EPS &&
+      Math.abs(eased.mouthY   - targetMouthY) < SETTLE_EPS &&
+      Math.abs(eased.blush    - targetBlush)  < SETTLE_EPS;
+
+    if (!settled) drawFaceFromEased(svg, isAway);
+
     animationFrameId = requestAnimationFrame(tick);
   }
   tick();
@@ -325,10 +397,6 @@ function mkEl(tag, attrs) {
   return e;
 }
 
-function getAvatarColor() {
-  return window.PERCH_AVATAR_COLOR || DEFAULT_BG;
-}
-
 function buildSvgSkeleton(svg) {
   if (svg.dataset.skeletonBuilt) return;
 
@@ -348,7 +416,6 @@ function buildSvgSkeleton(svg) {
   defs.appendChild(grad);
   svg.appendChild(defs);
 
-  // 为左右眼分别创建各自的 SVG ClipPath（裁剪路径）
   ["l", "r"].forEach(side => {
     const cx = BLOB_CX + (side === "l" ? -EYE_DX : EYE_DX);
     const clipPath = document.createElementNS(NS, "clipPath");
@@ -357,7 +424,6 @@ function buildSvgSkeleton(svg) {
     defs.appendChild(clipPath);
   });
 
-  // Base background layer
   const baseBlob = mkEl("circle", {
     "data-role": "blob",
     cx: BLOB_CX, cy: BLOB_CY, r: BLOB_R,
@@ -365,13 +431,11 @@ function buildSvgSkeleton(svg) {
   });
   svg.appendChild(baseBlob);
 
-  // Head group
   const g = document.createElementNS(NS, "g");
   g.setAttribute("data-role", "head");
   g.setAttribute("transform-origin", `${BLOB_CX} ${BLOB_CY}`);
   svg.appendChild(g);
 
-  // Blush
   g.appendChild(mkEl("ellipse", {
     "data-role": "blush-l",
     cx: BLOB_CX - BLUSH_DX, cy: BLUSH_CY, rx: 16, ry: 10,
@@ -383,20 +447,16 @@ function buildSvgSkeleton(svg) {
     fill: "url(#perch-blush)", opacity: 0.3,
   }));
 
-  // Eyes
   ["l", "r"].forEach(side => {
     const cx = BLOB_CX + (side === "l" ? -EYE_DX : EYE_DX);
-    
+
     const eyeGroup = document.createElementNS(NS, "g");
     g.appendChild(eyeGroup);
 
-    // 1. 眼白
     eyeGroup.appendChild(mkEl("circle", {
       "data-role": `eye-${side}`,
       cx, cy: EYE_CY, r: EYE_W_R, fill: "white",
     }));
-    
-    // 2. 瞳孔和高光
     eyeGroup.appendChild(mkEl("circle", {
       "data-role": `pupil-${side}`,
       cx, cy: EYE_CY, r: PUPIL_R, fill: "#2C2C2A",
@@ -405,8 +465,6 @@ function buildSvgSkeleton(svg) {
       "data-role": `highlight-${side}`,
       cx: cx + 6, cy: EYE_CY - 6, r: 4, fill: "white",
     }));
-    
-    // 3. 闭眼遮罩
     eyeGroup.appendChild(mkEl("rect", {
       "data-role": `lid-${side}`,
       x: cx - EYE_W_R - 5, y: EYE_CY - EYE_W_R - 5,
@@ -414,8 +472,6 @@ function buildSvgSkeleton(svg) {
       fill: getAvatarColor(),
       "clip-path": `url(#clip-eye-${side})`
     }));
-    
-    // 4. 闭眼睫毛线弧
     eyeGroup.appendChild(mkEl("path", {
       "data-role": `closed-${side}`,
       d: `M ${cx - EYE_W_R + 2} ${EYE_CY} Q ${cx} ${EYE_CY - 10} ${cx + EYE_W_R - 2} ${EYE_CY}`,
@@ -424,7 +480,6 @@ function buildSvgSkeleton(svg) {
     }));
   });
 
-  // Mouth
   g.appendChild(mkEl("path", {
     "data-role": "mouth",
     d: `M ${BLOB_CX - 12} ${MOUTH_CY} Q ${BLOB_CX} ${MOUTH_CY} ${BLOB_CX + 12} ${MOUTH_CY}`,
@@ -467,26 +522,25 @@ function drawFace(svg, m, state, useEased) {
 
 function drawFaceImpl(svg, v, isAway) {
   const blob = svg.querySelector('[data-role="blob"]');
-  const g = svg.querySelector('[data-role="head"]');
+  const g    = svg.querySelector('[data-role="head"]');
   if (!g) return;
 
   const color = getAvatarColor();
 
   const fs = clamp(v.faceScale, 0.7, 1.1);
   if (blob) {
-    blob.setAttribute("fill", color);
-    blob.setAttribute("transform", `scale(${fs.toFixed(3)})`);
-    blob.setAttribute("transform-origin", `${BLOB_CX} ${BLOB_CY}`);
+    setAttr(blob, "fill", color);
+    setAttr(blob, "transform", `scale(${fs.toFixed(3)})`);
+    setAttr(blob, "transform-origin", `${BLOB_CX} ${BLOB_CY}`);
   }
 
-  const sx = clamp(1 - Math.abs(v.yawDeg) / 90 * 0.25, 0.75, 1);
+  const sx = clamp(1 - Math.abs(v.yawDeg)   / 90 * 0.25, 0.75, 1);
   const sy = clamp(1 - Math.abs(v.pitchDeg) / 60 * 0.10, 0.90, 1);
-  
-  const dx = v.yawDeg * 0.45;    
-  const dy = -v.pitchDeg * 0.40;  
+  const dx = v.yawDeg   * 0.45;
+  const dy = -v.pitchDeg * 0.40;
 
-  g.setAttribute("transform-origin", `${BLOB_CX} ${BLOB_CY}`);
-  g.setAttribute("transform",
+  setAttr(g, "transform-origin", `${BLOB_CX} ${BLOB_CY}`);
+  setAttr(g, "transform",
     `translate(${dx.toFixed(2)} ${dy.toFixed(2)}) ` +
     `scale(${(sx * fs).toFixed(3)} ${(sy * fs).toFixed(3)}) ` +
     `rotate(${v.rollDeg.toFixed(2)})`
@@ -494,12 +548,12 @@ function drawFaceImpl(svg, v, isAway) {
 
   updateEye(g, "l", v.eyeL, v.pupilX, v.pupilY, color);
   updateEye(g, "r", v.eyeR, v.pupilX, v.pupilY, color);
-  updateMouth(g, v.mouthY, v.cornerL, v.cornerR, v.pout); // 传参注入嘟嘴数据
+  updateMouth(g, v.mouthY, v.cornerL, v.cornerR, v.pout);
 
   const bl = g.querySelector('[data-role="blush-l"]');
   const br = g.querySelector('[data-role="blush-r"]');
-  if (bl) bl.setAttribute("opacity", v.blush.toFixed(2));
-  if (br) br.setAttribute("opacity", v.blush.toFixed(2));
+  setAttr(bl, "opacity", v.blush.toFixed(2));
+  setAttr(br, "opacity", v.blush.toFixed(2));
 }
 
 function updateEye(g, side, open, pupilX, pupilY, bgColor) {
@@ -512,24 +566,18 @@ function updateEye(g, side, open, pupilX, pupilY, bgColor) {
 
   const px = cx + pupilX * PUPIL_RANGE;
   const py = cy + pupilY * PUPIL_RANGE;
-  if (pupil) {
-    pupil.setAttribute("cx", px);
-    pupil.setAttribute("cy", py);
-  }
-  if (hl) {
-    hl.setAttribute("cx", px + 6);
-    hl.setAttribute("cy", py - 6);
-  }
+  setAttr(pupil, "cx", px.toFixed(2));
+  setAttr(pupil, "cy", py.toFixed(2));
+  setAttr(hl,    "cx", (px + 6).toFixed(2));
+  setAttr(hl,    "cy", (py - 6).toFixed(2));
 
   const lidH = (EYE_W_R * 2 + 10) * (1 - open);
-  if (lid) {
-    lid.setAttribute("height", lidH.toFixed(2));
-    lid.setAttribute("fill", bgColor);
-  }
+  setAttr(lid, "height", lidH.toFixed(2));
+  setAttr(lid, "fill",   bgColor);
 
   if (closed) {
     const arcOpacity = open < 0.15 ? clamp01((0.15 - open) / 0.15) : 0;
-    closed.setAttribute("opacity", arcOpacity.toFixed(2));
+    setAttr(closed, "opacity", arcOpacity.toFixed(2));
   }
 }
 
@@ -539,52 +587,36 @@ function updateMouth(g, openY, cornerL, cornerR, pout) {
 
   const cx = BLOB_CX;
   const cy = MOUTH_CY;
-  
-  // 基准嘴半宽设为 12。嘟嘴(pout=1)时，宽度压缩缩窄多达 62%
-  const w = 12 * (1 - pout * 0.62);
-  
+
+  const w     = 12 * (1 - pout * 0.62);
   const liftL = cornerL * 4.5;
   const liftR = cornerR * 4.5;
   const smile = (cornerL + cornerR) / 2;
   const open  = openY * 9;
 
-  // 1. 闭嘴状态 (或者张嘴间隙极小)
   if (open < 1.2) {
-    // 关键修正点：在放松无表情状态下 (smile=0, lift=0, pout=0)，
-    // 控制点中点 Y 轴刚好是 cy 且两端也是 cy，渲染结果是绝对笔直的水平“一根横线”
-    const midY = cy - (smile * 6.5);
-    
+    const midY   = cy - (smile * 6.5);
     const leftY  = cy - liftL + (pout * 1.5);
     const rightY = cy - liftR + (pout * 1.5);
-
-    mouth.setAttribute("d",
+    setAttr(mouth, "d",
       `M ${(cx - w).toFixed(1)} ${leftY.toFixed(1)} ` +
       `Q ${cx} ${midY.toFixed(1)} ` +
       `${(cx + w).toFixed(1)} ${rightY.toFixed(1)}`
     );
-    // 保持线稿
-    mouth.setAttribute("fill", "none");
-  } 
-  // 2. 张嘴状态 (说话、微笑大笑、或嘟嘴张开)
-  else {
-    // 正常张嘴主要是下唇向下延展 (0.35 : 0.65)
-    // 但在嘟嘴（O型嘴）时，让上下唇更对称地撑开，形成空心的小圆圈
+    setAttr(mouth, "fill", "none");
+  } else {
     const top    = cy - open * (0.35 - pout * 0.1);
     const bottom = cy + open * (0.65 - pout * 0.2);
-    
-    // 微笑张嘴时会略微拉宽嘴巴宽度，而嘟嘴张嘴时保持窄长
-    const openW = w * (1 + Math.max(0, smile) * 0.2);
-
-    mouth.setAttribute("d",
+    const openW  = w * (1 + Math.max(0, smile) * 0.2);
+    setAttr(mouth, "d",
       `M ${(cx - openW).toFixed(1)} ${cy} ` +
       `Q ${cx} ${top.toFixed(1)} ${(cx + openW).toFixed(1)} ${cy} ` +
       `Q ${cx} ${bottom.toFixed(1)} ${(cx - openW).toFixed(1)} ${cy} Z`
     );
-    // 填充深色模拟口腔深度感
-    mouth.setAttribute("fill", "#2C2C2A");
+    setAttr(mouth, "fill", "#2C2C2A");
   }
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-function clamp01(v)       { return Math.max(0,  Math.min(1,  v)); }
+function clamp01(v)        { return Math.max(0,  Math.min(1,  v)); }

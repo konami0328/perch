@@ -104,5 +104,9 @@ def handle_timer_action(user_id: str, action: str) -> dict:
         timer.reset()
     elif action == "break":
         timer.start_break()
+    elif action == "set_duration":
+        duration = payload.get("duration", POMODORO_DURATION)  # 秒
+        timer.duration  = duration
+        timer.remaining = duration
 
     return timer.to_dict()

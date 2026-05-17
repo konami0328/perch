@@ -75,7 +75,7 @@ async def check_room(code: str):
         "exists": True,
         "joinable": True,
         "user_count": user_count,
-        "max_users": 5,
+        "max_users": 4,
     }
 
 
@@ -132,14 +132,16 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
             msg_type = data.get("type")
 
             if msg_type == "timer_action":
-                # User controlling their own timer.
                 action = data.get("action")
-                timer_state = handle_timer_action(user_id, action)
-                # Broadcast updated timer state to everyone in the room.
-                await broadcast(code, {
-                    "type": "timer_update",
-                    "timer": timer_state,
-                })
+                if action == "set_duration":
+                    from timer import get_or_create_timer
+                    t = get_or_create_timer(user_id)
+                    dur = int(data.get("duration", 25 * 60))
+                    t.duration = dur
+                    t.remaining = dur
+                else:
+                    timer_state = handle_timer_action(user_id, action)
+                    await broadcast(code, {"type": "timer_update", "timer": timer_state})
             
             elif msg_type == "todo_action":
                 # User modifying their own todo list.
@@ -151,6 +153,16 @@ async def websocket_endpoint(websocket: WebSocket, code: str):
                         "type": "todo_update",
                         "todo": todo_state,
                     })
+
+            elif msg_type == "user_break":
+                # User entering or leaving break mode.
+                # Relay to everyone else so they can show/hide the break placeholder.
+                is_break = data.get("is_break", False)
+                await broadcast(code, {
+                    "type":     "user_break",
+                    "user_id":  user_id,
+                    "is_break": is_break,
+                }, exclude=websocket)
 
             elif msg_type == "face_metrics":
                 # Relay face landmark metrics to other users in the room.

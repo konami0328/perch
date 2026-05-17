@@ -15,7 +15,7 @@ redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 CODE_LENGTH = 6
 CODE_CHARSET = string.ascii_uppercase + string.digits  # avoid lowercase to reduce ambiguity
 ROOM_TTL_SECONDS = 600  # 10 minutes
-MAX_USERS_PER_ROOM = 5
+MAX_USERS_PER_ROOM = 4
 
 
 def generate_code() -> str:

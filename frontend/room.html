@@ -2,202 +2,564 @@
 <html class="light" lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <link rel="icon" type="image/png" href="/icons/icon.png">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PERCH | 栖木</title>
-  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
-  <script id="tailwind-config">
-    tailwind.config = {
-      darkMode: "class",
-      theme: {
-        extend: {
-          colors: {
-            "linen":      "#FCF9F3",
-            "charcoal":   "#2C332D",
-            "stone":      "#DCDAD4",
-            "background": "#FCF9F3",
-            "primary":    "#2C332D",
-            "outline":    "#DCDAD4",
-            "secondary":  "#ad3313",
-          },
-          borderRadius: { DEFAULT: "0px" },
-          spacing: { "margin-page": "48px" },
-          fontFamily: {
-            "headline-lg": ["Noto Serif SC"],
-            "body-md":     ["Inter"],
-            "label-mono":  ["JetBrains Mono"],
-          },
-        },
-      },
-    }
-  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
+
   <style>
-    /* CSS custom property for animatable HSL border on remote panels */
-    @property --face-hue {
-      syntax: '<number>';
-      inherits: false;
-      initial-value: 140;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background-color: #FCF9F3;
+      background: #FCF9F3;
       color: #2C332D;
       height: 100vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      font-family: "Inter", sans-serif;
     }
 
-    .scaffold-line {
-      background: #DCDAD4;
-      position: absolute;
-      pointer-events: none;
+    /* ── Nav ── */
+    #perch-nav {
+      flex-shrink: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      border-bottom: 1px solid rgba(220,218,212,0.55);
+      z-index: 50;
     }
-
-    /* ── Face SVG ── */
-    .face-svg {
-      display: block;
-      color: #2C332D;  /* SVG strokes inherit currentColor */
+    .nav-logo {
+      font-family: "Noto Serif SC", serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-decoration: none;
+      color: #2C332D;
+      text-transform: uppercase;
     }
-
-    /* Remote panels: border colour driven by face state */
-    .other-panel .face-svg {
-      outline: 2px solid hsl(var(--face-hue) 40% 50%);
-      outline-offset: 2px;
-      transition: --face-hue 1.2s ease, filter 1.2s ease;
-      --face-hue: 140;
+    .nav-right { display: flex; align-items: center; gap: 14px; }
+    .nav-divider { width: 1px; height: 11px; background: rgba(220,218,212,0.9); }
+    .mono-sm {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.38);
     }
-    .other-panel.face-state--focused    .face-svg { --face-hue: 140; filter: none; transition: --face-hue 0.4s ease, filter 0.4s ease; }
-    .other-panel.face-state--distracted .face-svg { --face-hue: 50;  filter: none; }
-    .other-panel.face-state--severe     .face-svg { --face-hue: 10;  filter: none; }
-    .other-panel.face-state--away       .face-svg { filter: saturate(0) brightness(0.85); }
-
-    /* ── Timer display ── */
-    .timer-digits {
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.02em;
+    #room-code-btn {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      color: rgba(44,51,45,0.5);
+      cursor: pointer;
+      transition: color 0.15s;
     }
-
-    /* ── Todo items ── */
-    .todo-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #DCDAD4; }
-    .todo-item:last-child { border-bottom: none; }
-    .todo-item.done .todo-text { text-decoration: line-through; opacity: 0.4; }
-
-    /* ── Connection status dot ── */
+    #room-code-btn:hover { color: #2C332D; }
     .conn-dot {
       display: inline-block;
       width: 6px; height: 6px;
-      border-radius: 9999px;
+      border-radius: 50%;
       background: #DCDAD4;
+      transition: background 0.4s;
     }
     .conn-dot.connected    { background: #65a96e; }
     .conn-dot.connecting   { background: #c4a030; }
     .conn-dot.disconnected { background: #ad3313; }
+    .cam-toggle {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      color: rgba(44,51,45,0.38);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.15s;
+    }
+    .cam-toggle:hover { color: #2C332D; }
+
+    /* ── Room body: grid + toolbar stacked ── */
+    #room-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Main grid ── */
+    #room-main {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      /* layout controlled by JS */
+      transition:
+        grid-template-columns 0.5s cubic-bezier(0.4,0,0.2,1),
+        grid-template-rows    0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Cell wrapper = face area + todo strip ── */
+    .cell-wrap {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(220,218,212,0.4);
+      border-bottom: 1px solid rgba(220,218,212,0.4);
+      overflow: hidden;
+      position: relative;
+      min-height: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    /* face area */
+    .cell-face {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* SVG face — sized relative to cell */
+    .face-svg {
+      display: block;
+      width: clamp(64px, 32%, 150px);
+      height: auto;
+      aspect-ratio: 1;
+    }
+
+    /* state ring on other-cells */
+    .cell-wrap.other-cell .face-svg {
+      outline: 2px solid hsl(var(--face-hue, 140) 38% 52%);
+      outline-offset: 3px;
+      border-radius: 50%;
+      transition: outline-color 1s ease, filter 1s ease;
+    }
+    .cell-wrap.face-state--focused    { --face-hue: 140; }
+    .cell-wrap.face-state--distracted { --face-hue: 50; }
+    .cell-wrap.face-state--severe     { --face-hue: 10; }
+    .cell-wrap.face-state--away .face-svg { filter: saturate(0) brightness(0.82); }
+
+    /* timer under face */
+    .cell-timer {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: rgba(44,51,45,0.3);
+      margin-top: 7px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Todo strip ── */
+    .cell-todos {
+      flex-shrink: 0;
+      border-top: 1px solid rgba(220,218,212,0.45);
+      padding: 6px 12px;
+    }
+    .todo-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 2.5px 0;
+      min-height: 20px;
+    }
+    .todo-row.done .todo-text {
+      text-decoration: line-through;
+      opacity: 0.3;
+    }
+    .todo-cb {
+      flex-shrink: 0;
+      width: 10px; height: 10px;
+      border: 1px solid rgba(44,51,45,0.28);
+      border-radius: 2px;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
+      transition: background 0.15s;
+    }
+    .todo-cb:checked { background: rgba(44,51,45,0.22); }
+    .todo-cb:checked::after {
+      content: '';
+      position: absolute;
+      left: 1.5px; top: -0.5px;
+      width: 5px; height: 8px;
+      border: 1.5px solid #2C332D;
+      border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+    .todo-text {
+      flex: 1;
+      font-size: 10px;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: text;
+      color: #2C332D;
+    }
+    .todo-del {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: rgba(44,51,45,0.18);
+      cursor: pointer;
+      background: none;
+      border: none;
+      line-height: 1;
+      padding: 0 2px;
+      transition: color 0.15s;
+    }
+    .todo-del:hover { color: #ad3313; }
+    .todo-edit-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(44,51,45,0.28);
+      outline: none;
+      font-size: 10px;
+      color: #2C332D;
+      font-family: "Inter", sans-serif;
+      padding: 0;
+    }
+
+    /* ── My toolbar ── */
+    #my-toolbar {
+      flex-shrink: 0;
+      border-top: 1px solid rgba(220,218,212,0.6);
+      background: #FCF9F3;
+      padding: 8px 16px 10px;
+      display: none;
+      flex-direction: column;
+      gap: 7px;
+      /* slide up animation handled via JS class */
+      transform: translateY(0);
+      transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+    }
+    #my-toolbar.show { display: flex; }
+
+    .tb-row { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+
+    .duration-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.38);
+    }
+    #session-duration {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      width: 38px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(44,51,45,0.22);
+      padding: 1px 0;
+      color: #2C332D;
+      text-align: center;
+      outline: none;
+    }
+    #session-duration:focus { border-bottom-color: #2C332D; }
+    /* hide spinners */
+    #session-duration::-webkit-outer-spin-button,
+    #session-duration::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+    .tb-btn {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      border-bottom: 1px solid transparent;
+      padding: 0 0 1px;
+      cursor: pointer;
+      color: rgba(44,51,45,0.38);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tb-btn:hover:not(:disabled) { color: #2C332D; border-bottom-color: #2C332D; }
+    .tb-btn.active { color: #2C332D; border-bottom-color: #2C332D; }
+    .tb-btn:disabled { opacity: 0.22; cursor: default; }
+    .tb-btn.danger:hover:not(:disabled) { color: #ad3313; border-bottom-color: #ad3313; }
+
+    #undo-badge {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 8px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: none;
+      border: 1px solid rgba(173,51,19,0.45);
+      color: #ad3313;
+      padding: 1px 7px;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    #undo-badge.visible { opacity: 1; pointer-events: auto; }
+
+    .todo-input-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      border-bottom: 1px solid rgba(220,218,212,0.55);
+      padding-bottom: 2px;
+    }
+    #todo-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 10px;
+      color: #2C332D;
+      font-family: "Inter", sans-serif;
+    }
+    #todo-input::placeholder { color: rgba(44,51,45,0.2); }
+    #btn-todo-add {
+      font-size: 13px;
+      color: rgba(44,51,45,0.28);
+      cursor: pointer;
+      background: none;
+      border: none;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    #btn-todo-add:hover { color: #2C332D; }
+
+    /* ── Bird placeholder ── */
+    .bird-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 10px;
+      color: rgba(44,51,45,0.12);
+    }
+    .bird-icon {
+      font-size: 36px;
+      animation: bird-sway 4s ease-in-out infinite;
+    }
+    .bird-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    @keyframes bird-sway {
+      0%,100% { transform: rotate(-4deg) translateY(0); }
+      50%      { transform: rotate(4deg)  translateY(-5px); }
+    }
+
+    /* ── Break overlay on a cell ── */
+    .break-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(252,249,243,0.93);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      z-index: 10;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    .break-overlay.on { opacity: 1; pointer-events: auto; }
+    .break-overlay-icon { font-size: 22px; opacity: 0.18; }
+    .break-overlay-text {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.38);
+    }
+
+    /* When I'm on break: hide other cells smoothly */
+    #room-main.i-am-breaking .cell-wrap.other-cell {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    /* ── End-session / completion banner ── */
+    #end-banner {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #FCF9F3;
+      border-top: 1px solid rgba(220,218,212,0.7);
+      padding: 13px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 100;
+      transform: translateY(100%);
+      transition: transform 0.45s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: 0 -6px 28px rgba(44,51,45,0.06);
+    }
+    #end-banner.up { transform: translateY(0); }
+
+    .banner-msg {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.45);
+    }
+    .banner-btn {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: none;
+      border: 1px solid rgba(44,51,45,0.28);
+      color: #2C332D;
+      padding: 4px 16px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .banner-btn:hover { background: #2C332D; color: #FCF9F3; }
+    .banner-btn.leave-btn { border-color: rgba(173,51,19,0.4); color: #ad3313; }
+    .banner-btn.leave-btn:hover { background: #ad3313; color: #FCF9F3; }
+
+    /* ── Leave confirm ── */
+    #leave-confirm {
+      position: fixed;
+      inset: 0;
+      background: rgba(252,249,243,0.85);
+      backdrop-filter: blur(3px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    #leave-confirm.on { opacity: 1; pointer-events: auto; }
+    .leave-msg {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.5);
+    }
+    .leave-btns { display: flex; gap: 14px; }
+
+    /* ── Error strip ── */
+    #err-strip {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #ad3313;
+      padding: 5px 28px;
+      border-top: 1px solid rgba(173,51,19,0.18);
+      display: none;
+    }
+    #err-strip.on { display: block; }
+
+    /* ── Cell enter animation ── */
+    @keyframes cell-in {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .cell-wrap { animation: cell-in 0.38s ease both; }
+
+    /* ── My cell label ── */
+    .you-label {
+      position: absolute;
+      bottom: 8px; left: 10px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 8px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(44,51,45,0.18);
+    }
   </style>
 </head>
 
-<body class="font-body-md selection:bg-charcoal selection:text-linen relative">
+<body>
+  <video id="camera-video" autoplay playsinline muted></video>
 
-  <!-- Scaffold lines (match index.html aesthetic) -->
-  <div class="scaffold-line w-[1px] h-full left-[48px] top-0 opacity-30"></div>
-  <div class="scaffold-line w-full h-[1px] left-0 top-20 opacity-20"></div>
-
-  <!-- Hidden video: getUserMedia sink, never shown -->
-  <video id="camera-video" autoplay playsinline muted style="display:none"></video>
-
-  <!-- ── Nav ── -->
-  <nav class="shrink-0 w-full flex justify-between items-center px-[48px] py-6 relative z-50 border-b border-outline/30">
-    <div class="flex items-baseline gap-4">
-      <a href="/" class="font-headline-lg text-xl font-bold tracking-tight uppercase hover:text-secondary transition-colors">PERCH</a>
-      <span class="font-label-mono text-[10px] text-charcoal/50 uppercase">栖木</span>
-    </div>
-    <div class="flex items-center gap-6">
-      <!-- Room code: click to copy -->
-      <button id="room-code-btn" class="font-label-mono text-[13px] uppercase tracking-widest text-charcoal/50 hover:text-charcoal transition-colors cursor-pointer" title="点击复制房间号">
-        ——————
-      </button>
-      <div class="h-3 w-[1px] bg-outline"></div>
-      <!-- Connection status -->
-      <div class="flex items-center gap-2">
+  <!-- Nav -->
+  <nav id="perch-nav">
+    <a href="/" class="nav-logo">PERCH</a>
+    <div class="nav-right">
+      <button id="room-code-btn" title="点击复制房间号">——————</button>
+      <div class="nav-divider"></div>
+      <div style="display:flex;align-items:center;gap:5px;">
         <span id="conn-dot" class="conn-dot connecting"></span>
-        <span id="conn-label" class="font-label-mono text-[10px] text-charcoal/40 uppercase">connecting</span>
+        <span id="conn-label" class="mono-sm">connecting</span>
       </div>
-      <div class="h-3 w-[1px] bg-outline"></div>
-      <!-- User count -->
-      <span id="user-count" class="font-label-mono text-[10px] text-charcoal/40 uppercase">0/5</span>
+      <div class="nav-divider"></div>
+      <span id="user-count" class="mono-sm">0 / 4</span>
+      <div class="nav-divider"></div>
+      <button id="btn-camera-nav" class="cam-toggle">
+        <span id="cam-icon-nav">◎</span>
+        <span id="cam-label-nav">camera</span>
+      </button>
     </div>
   </nav>
 
-  <!-- ── Main ── -->
-  <main class="flex-grow flex min-h-0 overflow-hidden">
+  <!-- Room body: grid on top, my toolbar pinned below -->
+  <div id="room-body">
+    <div id="room-main"></div>
 
-    <!-- ── My panel (left, fixed width) ── -->
-    <aside class="w-72 shrink-0 flex flex-col border-r border-outline/30 overflow-y-auto">
-
-      <!-- Face area -->
-      <div id="my-face-container" class="border-b border-outline/20 p-6 flex flex-col items-center gap-4" style="display:none!important">
-        <svg id="my-face-svg" class="face-svg w-36 h-36" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
-        <!-- Camera toggle -->
-        <button id="btn-camera" class="font-label-mono text-[10px] uppercase text-charcoal/40 hover:text-charcoal transition-colors tracking-widest flex items-center gap-2">
-          <span id="camera-icon">◎</span>
-          <span id="camera-label">camera off</span>
-        </button>
+    <div id="my-toolbar">
+      <div class="tb-row">
+        <span class="duration-label">专注</span>
+        <input id="session-duration" type="number" min="25" max="90" value="25">
+        <span class="duration-label">分钟</span>
+        <div style="flex:1"></div>
+        <button id="undo-badge">撤销</button>
       </div>
-
-      <!-- Camera toggle (shown when face container hidden) -->
-      <div id="camera-toggle-row" class="px-6 py-4 border-b border-outline/20">
-        <button id="btn-camera-2" class="font-label-mono text-[10px] uppercase text-charcoal/40 hover:text-charcoal transition-colors tracking-widest flex items-center gap-2">
-          <span id="camera-icon-2">◎</span>
-          <span id="camera-label-2">camera off</span>
-        </button>
+      <div class="tb-row">
+        <button id="btn-start"  class="tb-btn active">开始</button>
+        <button id="btn-pause"  class="tb-btn" disabled>暂停</button>
+        <button id="btn-reset"  class="tb-btn" disabled>重置</button>
+        <button id="btn-break"  class="tb-btn">休息</button>
+        <div style="flex:1"></div>
+        <button id="btn-leave"  class="tb-btn danger">离开</button>
       </div>
-
-      <!-- Timer -->
-      <div class="px-6 py-6 border-b border-outline/30">
-        <p class="font-label-mono text-[9px] text-secondary uppercase tracking-[0.3em] mb-4">今日专注</p>
-        <div id="my-timer-display" class="timer-digits font-headline-lg text-5xl mb-1">25:00</div>
-        <div id="my-timer-status" class="font-label-mono text-[10px] text-charcoal/40 uppercase mb-6">idle</div>
-        <div class="flex gap-3 flex-wrap">
-          <button id="btn-start" class="font-label-mono text-[11px] uppercase border-b border-charcoal pb-0.5 hover:text-secondary hover:border-secondary transition-all">开始</button>
-          <button id="btn-pause" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all" disabled>暂停</button>
-          <button id="btn-reset" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all" disabled>重置</button>
-          <button id="btn-break" class="font-label-mono text-[11px] uppercase text-charcoal/30 border-b border-charcoal/20 pb-0.5 hover:text-charcoal hover:border-charcoal transition-all">休息</button>
-        </div>
-      </div>
-
-      <!-- Todos -->
-      <div class="px-6 py-6 flex-grow">
-        <p class="font-label-mono text-[9px] text-secondary uppercase tracking-[0.3em] mb-4">今日三件事</p>
-        <ul id="my-todo-list" class="mb-4"></ul>
-        <div class="flex items-center gap-3 border-b border-outline/40 pb-2">
-          <input id="todo-input"
-            class="flex-grow bg-transparent border-none p-0 focus:ring-0 font-body-md text-sm placeholder:text-charcoal/20"
-            placeholder="添加一件事…" maxlength="120" type="text">
-          <button id="btn-todo-add" class="font-label-mono text-charcoal/40 hover:text-charcoal transition-colors text-base">＋</button>
-        </div>
-      </div>
-
-      <!-- Footer label -->
-      <div class="px-6 py-4 border-t border-outline/20">
-        <p class="font-label-mono text-[9px] text-charcoal/20 uppercase tracking-widest">YOU</p>
-      </div>
-
-    </aside>
-
-    <!-- ── Others area ── -->
-    <div id="others-container" class="flex-grow overflow-x-auto flex gap-0">
-      <!-- Other user panels are injected here by room.js -->
-      <!-- Empty state -->
-      <div id="empty-state" class="flex-grow flex flex-col items-center justify-center text-center px-16">
-        <p class="font-headline-lg text-3xl text-charcoal/10 mb-4">等待他人加入</p>
-        <p class="font-label-mono text-[10px] text-charcoal/20 uppercase tracking-widest">分享房间号邀请好友</p>
+      <div class="todo-input-row">
+        <input id="todo-input" type="text" placeholder="添加一件事…" maxlength="120">
+        <button id="btn-todo-add">＋</button>
       </div>
     </div>
+  </div>
 
-  </main>
+  <!-- End / completion banner -->
+  <div id="end-banner">
+    <span class="banner-msg" id="end-banner-msg">session 结束</span>
+    <button class="banner-btn" id="end-btn-break">休息</button>
+    <button class="banner-btn leave-btn" id="end-btn-leave">离开</button>
+  </div>
 
-  <!-- ── Banner (injected on error) ── -->
-  <div id="banner-container"></div>
+  <!-- Leave confirm overlay -->
+  <div id="leave-confirm">
+    <span class="leave-msg">确定离开房间？</span>
+    <div class="leave-btns">
+      <button class="banner-btn" id="leave-cancel">取消</button>
+      <button class="banner-btn leave-btn" id="leave-ok">离开</button>
+    </div>
+  </div>
+
+  <!-- Error strip -->
+  <div id="err-strip"></div>
 
   <script type="module" src="room.js"></script>
 </body>
