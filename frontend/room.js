@@ -3,6 +3,8 @@
  * No chrome.* dependencies — pure browser APIs only.
  */
 
+window.PERCH_AVATAR_COLOR = "#A8D8EA";  // 蓝色，自己换
+
 import { initCamera, renderRemoteFace, stopCamera } from "./camera.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
